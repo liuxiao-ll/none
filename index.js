@@ -30,12 +30,29 @@ io.set('authorization', (handshakeData, accept) => {
 
 io.on('connection', (socket) => {
   socket.on('serverEvents.send', (data) => {
-    console.log(data);
   });
   // setInterval(()=>{
   //   socket.emit('clientEvents.welcome', '当前服务器时间，' + new Date());
   // }, 1333);
   io.emit('online', socket.id)
+
+  // 上线
+  socket.on('server.online', (nickName) => {
+    socket.nickName = nickName
+    io.emit('client.online', nickName)
+  })
+
+  // 下线
+  socket.on('disconnect', () => {
+    socket.broadcast.emit('client.offline', socket.nickName)
+  })
+
+  // 接受聊天
+  socket.on('server.newMsg', (msgObj) => {
+    msgObj.now = Date.now()
+    msgObj.nickName = socket.nickName
+    io.emit('client.newMsg', msgObj)
+  })
 });
 
 server.listen('8000', (err) => {
