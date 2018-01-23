@@ -11,6 +11,9 @@ $(function(){
   let $elTemplate = $('#el_template')
   let $elInputMsg = $('#el_input_msg')
   let $elBtnSend = $('#el_btn_send')
+  let $spanNickname = $("#span_nickname")
+  let $table = $('#table_userlist')
+  let $elBtnSendFile = $('#el_btn_sendfile')
   // 工具方法
   function writeMessage(type, msg, title, isSelf ) {
     title= title || (type === 'system' ? '系统消息' : 'User')
@@ -36,6 +39,12 @@ $(function(){
     }
   })
   
+
+  //关闭上传文件
+
+  $('#el_btn_file_cancel').click(() => {
+    $('.app-file-container, .backup').hide()
+  })
   function sendMsg(msg, type) {
     var msgObj = {
       type: type || 'text',
@@ -45,6 +54,14 @@ $(function(){
     client.emit('server.newMsg', msgObj);
   }
 
+
+  // 点击上传文件
+
+  $elBtnSendFile.click(() => {
+    $('.app-file-container, .backup').show()
+  })
+
+  
   $(document).on('paste', function(e){
     var originalEvent =  e.originalEvent;
     var items;
@@ -84,6 +101,7 @@ $(function(){
   do {
     nickName = prompt('请输入您的昵称：')
   } while (!nickName)
+  $spanNickname.html(nickName)
   client.emit('server.online', nickName)
   client.on('client.online', (nickName) => {
     writeMessage('system', nickName+'上线了')
@@ -99,6 +117,38 @@ $(function(){
     }
     writeMessage('user', msgObj.data, msgObj.nickName, msgObj.clientId === client.id)
     $appChatContent[0].scrollTop = $appChatContent[0].scrollHeight
+  })
+
+  client.on('client.onlineList', (userList) => {
+    $table.find('tr').not(":eq(0)").remove()
+    userList.forEach((item) => {
+      $table.append(`<tr><td>${item}</td></tr>`)
+    })
+  })
+
+  client.on('client.joinroom', (msgObj) => {
+    writeMessage('user', '我加入了房间'+ msgObj.roomId, msgObj.nickName )
+  })
+  setInterval(() => {
+    client.emit('server.getOnlineList')
+  }, 1000 * 10)
+  $('#el_btn_file_send').click(() => {
+    var files = document.getElementById('el_file').files;
+    if(files.length === 0){
+      return window.alert('Must select a file.');
+    }
+    var file = files[0];
+    //发送文件
+    client.emit('server.sendfile', {
+      clientId: client.id,
+      file: file,
+      fileName: file.name
+    });
+    $('.app-file-container, .backup').hide()
+  })
+
+  client.on('client.file', (fileMsgObj) => {
+    writeMessage('user', `文件:<a href="./files/${fileMsgObj.fileName}">下载${fileMsgObj.fileName}</a>`,fileMsgObj.nickName, client.id === fileMsgObj.clientId)
   })
 
   client.on('error', function(err) {

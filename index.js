@@ -4,7 +4,16 @@ var http = require('http');
 var path = require('path');
 var express = require('express');
 var SocketIo = require('socket.io');
-
+var fs = require('fs')
+let roomMap = {
+  'aa1': 'roomA',
+  'aa2': 'roomA',
+  'bb1': 'roomB',
+  'bb2': 'roomB'
+}
+let getRoom = (userId) => {
+  return roomMap[userId] || 'default-room'
+}
 var app = express();
 app.use(express.static(path.join(__dirname, './public')));
 var server = http.Server(app);
@@ -27,7 +36,18 @@ io.set('authorization', (handshakeData, accept) => {
     accept('Authorization Error', false);
   }
 });
+let userMap = new Map()
+var getUserList = (userMap) => {
+  let userList = []
+  for (let client of userMap.values()) {
+    userList.push(client.nickName)
+  }
+  return userList
+}
 
+var isRoom =(userId) => {
+  return ['roomA', 'roomB'].indexOf(roomId) > 0
+}
 io.on('connection', (socket) => {
   socket.on('serverEvents.send', (data) => {
   });
@@ -39,21 +59,58 @@ io.on('connection', (socket) => {
   // 上线
   socket.on('server.online', (nickName) => {
     socket.nickName = nickName
+    var roomId = getRoom(nickName)
+    socket.join(roomId)
     io.emit('client.online', nickName)
+    socket.emit('client.joinroom', {
+      nickName: nickName,
+      roomId: roomId
+    })
   })
 
   // 下线
   socket.on('disconnect', () => {
+    userMap.delete(socket.id)
     socket.broadcast.emit('client.offline', socket.nickName)
   })
 
   // 接受聊天
   socket.on('server.newMsg', (msgObj) => {
+    if (msgObj.type === 'text') {
+      let splitPoint = msgObj.data.indexOf(':')
+      if (splitPoint > 0) {
+        let roomId = msgObj.data.substring(0,splitPoint)
+        if (isRoom(roomId)) {
+          let msg = msgObj.data.substring(splitPoint + 1)
+          msgObj.data = msg
+          io.to(roomId).emit('client.newMsg')
+          return
+        }
+      }
+    }
     msgObj.now = Date.now()
     msgObj.nickName = socket.nickName
     io.emit('client.newMsg', msgObj)
   })
+
+  socket.on('server.getOnlineList', () => {
+    socket.emit('client.onlineList', getUserList(userMap))
+  })
+  // 文件
+  socket.on('server.sendfile', (fileMsgObj) => {
+    let filePath = path.resolve(__dirname, `./public/files/${fileMsgObj.fileName}`)
+    fs.writeFileSync(filePath, fileMsgObj.file, 'binary')
+    io.emit('client.file', {
+      nickName: socket.nickName,
+      now: Date.now(),
+      fileName: fileMsgObj.fileName,
+      clientId: fileMsgObj.clientId
+    })
+  })
+  userMap.set(socket.id, socket)
 });
+
+
 
 server.listen('8000', (err) => {
     if(err){
